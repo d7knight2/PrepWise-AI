@@ -1,12 +1,9 @@
-import React from 'react';
+// This is a minimal Next.js page
 
-const Home = () => {
+export default function Home() {
   return (
     <div>
-      <h1>PrepWise-AI</h1>
-      <p>Welcome to the AI Mock Interview Tool!</p>
+      <h1>Welcome to Next.js!</h1>
     </div>
   );
-};
-
-export default Home;
+}
