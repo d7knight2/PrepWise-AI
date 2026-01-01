@@ -1,6 +1,7 @@
 import { Fragment } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/router';
 import {
   HomeIcon,
@@ -55,11 +56,13 @@ export default function Layout({ children }) {
                 </div>
               </div>
               <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <img
-                    className="h-8 w-8 rounded-full"
+                <div className="flex-shrink-0 relative h-8 w-8 rounded-full overflow-hidden">
+                  <Image
                     src={session.user?.image || '/default-avatar.png'}
                     alt={session.user?.name || 'User'}
+                    width={32}
+                    height={32}
+                    className="rounded-full"
                   />
                 </div>
                 <div className="ml-3">

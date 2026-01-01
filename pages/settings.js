@@ -1,6 +1,7 @@
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Layout from '@/components/Layout';
 import {
   UserCircleIcon,
@@ -69,11 +70,15 @@ export default function Settings() {
             </div>
             <div className="space-y-4">
               <div className="flex items-center">
-                <img
-                  src={session.user?.image || '/default-avatar.png'}
-                  alt={session.user?.name || 'User'}
-                  className="h-16 w-16 rounded-full"
-                />
+                <div className="relative h-16 w-16 rounded-full overflow-hidden">
+                  <Image
+                    src={session.user?.image || '/default-avatar.png'}
+                    alt={session.user?.name || 'User'}
+                    width={64}
+                    height={64}
+                    className="rounded-full"
+                  />
+                </div>
                 <div className="ml-4">
                   <p className="text-lg font-medium text-gray-900">
                     {session.user?.name}
@@ -178,7 +183,7 @@ export default function Settings() {
               {calendarSync && (
                 <div className="bg-green-50 border border-green-200 rounded-md p-4">
                   <p className="text-sm text-green-800">
-                    ✓ Calendar sync is active. We'll notify you of upcoming interviews and
+                    ✓ Calendar sync is active. We&apos;ll notify you of upcoming interviews and
                     suggest preparation materials.
                   </p>
                 </div>
