@@ -75,13 +75,13 @@ export default function Dashboard() {
     {
       type: 'Mock Interview',
       title: 'Technical Interview - Software Engineer',
-      date: '2026-01-01',
+      date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       score: 85,
     },
     {
       type: 'Calendar Sync',
       title: 'Synced 3 upcoming interviews',
-      date: '2025-12-31',
+      date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       score: null,
     },
   ];
@@ -90,7 +90,7 @@ export default function Dashboard() {
     {
       company: 'Example Tech Corp',
       position: 'Senior Software Engineer',
-      date: '2026-01-15',
+      date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       time: '10:00 AM',
     },
   ];
