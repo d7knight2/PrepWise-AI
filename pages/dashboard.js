@@ -19,12 +19,55 @@ export default function Dashboard() {
     upcomingInterviews: 0,
     practiceTime: 0,
   });
+  const [upcomingInterviews, setUpcomingInterviews] = useState([]);
+  const [pastInterviews, setPastInterviews] = useState([]);
+  const [loadingCalendar, setLoadingCalendar] = useState(true);
+  const [calendarError, setCalendarError] = useState(null);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/');
     }
   }, [status, router]);
+
+  // Fetch calendar events when user is authenticated
+  useEffect(() => {
+    if (status === 'authenticated' && session) {
+      fetchCalendarEvents();
+    }
+  }, [status, session]);
+
+  const fetchCalendarEvents = async () => {
+    try {
+      setLoadingCalendar(true);
+      setCalendarError(null);
+      
+      const response = await fetch('/api/calendar/events');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch calendar events');
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setUpcomingInterviews(data.upcoming || []);
+        setPastInterviews(data.past || []);
+        
+        // Update stats with calendar data
+        setStats(prev => ({
+          ...prev,
+          upcomingInterviews: data.upcoming?.length || 0,
+          totalInterviews: data.past?.length || 0,
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching calendar events:', error);
+      setCalendarError(error.message);
+    } finally {
+      setLoadingCalendar(false);
+    }
+  };
 
   if (status === 'loading') {
     return (
@@ -45,15 +88,15 @@ export default function Dashboard() {
       name: 'Total Mock Interviews',
       value: stats.totalInterviews,
       icon: ChartBarIcon,
-      change: '+12%',
-      changeType: 'positive',
+      change: stats.totalInterviews > 0 ? `${stats.totalInterviews} past` : 'No past',
+      changeType: 'neutral',
     },
     {
       name: 'Average Score',
       value: `${stats.averageScore}%`,
       icon: TrophyIcon,
-      change: '+5.4%',
-      changeType: 'positive',
+      change: stats.averageScore > 0 ? '+5.4%' : 'N/A',
+      changeType: stats.averageScore > 0 ? 'positive' : 'neutral',
     },
     {
       name: 'Upcoming Interviews',
@@ -66,34 +109,20 @@ export default function Dashboard() {
       name: 'Practice Time',
       value: `${stats.practiceTime}h`,
       icon: ClockIcon,
-      change: '+2.5h',
-      changeType: 'positive',
+      change: stats.practiceTime > 0 ? '+2.5h' : 'Start now',
+      changeType: stats.practiceTime > 0 ? 'positive' : 'neutral',
     },
   ];
 
-  const recentActivities = [
-    {
-      type: 'Mock Interview',
-      title: 'Technical Interview - Software Engineer',
-      date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      score: 85,
-    },
-    {
-      type: 'Calendar Sync',
-      title: 'Synced 3 upcoming interviews',
-      date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  // Generate recent activities from past interviews
+  const recentActivities = pastInterviews
+    .slice(0, 5)
+    .map(interview => ({
+      type: 'Calendar Interview',
+      title: `${interview.company} - ${interview.position}`,
+      date: new Date(interview.startTime).toISOString().split('T')[0],
       score: null,
-    },
-  ];
-
-  const upcomingInterviews = [
-    {
-      company: 'Example Tech Corp',
-      position: 'Senior Software Engineer',
-      date: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      time: '10:00 AM',
-    },
-  ];
+    }));
 
   return (
     <Layout>
@@ -191,34 +220,78 @@ export default function Dashboard() {
                 Upcoming Interviews
               </h2>
               <div className="space-y-4">
-                {upcomingInterviews.length === 0 ? (
+                {loadingCalendar ? (
+                  <div className="text-center py-6">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
+                    <p className="mt-2 text-sm text-gray-500">Loading calendar events...</p>
+                  </div>
+                ) : calendarError ? (
+                  <div className="text-center py-6">
+                    <CalendarIcon className="mx-auto h-12 w-12 text-red-400" />
+                    <p className="mt-2 text-sm text-red-500">
+                      Failed to load calendar events
+                    </p>
+                    <button 
+                      onClick={fetchCalendarEvents}
+                      className="mt-4 btn-secondary"
+                    >
+                      Try Again
+                    </button>
+                  </div>
+                ) : upcomingInterviews.length === 0 ? (
                   <div className="text-center py-6">
                     <CalendarIcon className="mx-auto h-12 w-12 text-gray-400" />
                     <p className="mt-2 text-sm text-gray-500">
                       No upcoming interviews found in your calendar.
                     </p>
-                    <button className="mt-4 btn-secondary">
-                      Sync Calendar
+                    <button 
+                      onClick={fetchCalendarEvents}
+                      className="mt-4 btn-secondary"
+                    >
+                      Refresh Calendar
                     </button>
                   </div>
                 ) : (
-                  upcomingInterviews.map((interview, idx) => (
-                    <div
-                      key={idx}
-                      className="border-l-4 border-primary-500 pl-4 py-2"
-                    >
-                      <p className="text-sm font-semibold text-gray-900">
-                        {interview.company}
-                      </p>
-                      <p className="text-sm text-gray-600">{interview.position}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {interview.date} at {interview.time}
-                      </p>
-                      <button className="mt-2 text-sm text-primary-600 hover:text-primary-700 font-medium">
-                        Prepare Now →
-                      </button>
-                    </div>
-                  ))
+                  upcomingInterviews.map((interview) => {
+                    const interviewDate = new Date(interview.startTime);
+                    const dateStr = interviewDate.toISOString().split('T')[0];
+                    const timeStr = interviewDate.toLocaleTimeString('en-US', { 
+                      hour: 'numeric', 
+                      minute: '2-digit',
+                      hour12: true 
+                    });
+                    
+                    return (
+                      <div
+                        key={interview.id}
+                        className="border-l-4 border-primary-500 pl-4 py-2"
+                      >
+                        <p className="text-sm font-semibold text-gray-900">
+                          {interview.company}
+                        </p>
+                        <p className="text-sm text-gray-600">{interview.position}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {dateStr} at {timeStr}
+                        </p>
+                        {interview.meetingLink && (
+                          <a 
+                            href={interview.meetingLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 text-sm text-primary-600 hover:text-primary-700 font-medium inline-block mr-4"
+                          >
+                            Join Meeting →
+                          </a>
+                        )}
+                        <button 
+                          onClick={() => router.push('/mock-interview')}
+                          className="mt-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
+                        >
+                          Prepare Now →
+                        </button>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
