@@ -19,6 +19,14 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
+    // Check if there was an error refreshing the token
+    if (session.error === 'RefreshAccessTokenError') {
+      return res.status(401).json({ 
+        error: 'Authentication token expired',
+        message: 'Please sign in again to reconnect your calendar' 
+      });
+    }
+
     // Calculate date range - last 6 months
     const now = new Date();
     const sixMonthsAgo = new Date();
