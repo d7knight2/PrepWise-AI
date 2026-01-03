@@ -45,6 +45,13 @@ export default function Dashboard() {
       const response = await fetch('/api/calendar/events');
       
       if (!response.ok) {
+        const errorData = await response.json();
+        
+        // Handle token expiration specifically
+        if (response.status === 401 && errorData.message?.includes('sign in again')) {
+          throw new Error('Calendar access expired. Please sign out and sign in again to reconnect.');
+        }
+        
         throw new Error('Failed to fetch calendar events');
       }
       
