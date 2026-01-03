@@ -43,14 +43,14 @@ export function parseInterviewEvent(event) {
   let position = 'Position';
   
   // Common patterns: "Interview with [Company]", "[Company] Interview", etc.
-  const companyMatch = title.match(/(?:with|at|@)\s+([A-Z][A-Za-z0-9\s&]+?)(?:\s+-|\s+\||\s+for|$)/i);
+  const companyMatch = title.match(/(?:with|at|@)\s+([A-Za-z0-9][A-Za-z0-9\s&.,'-]+?)(?:\s+-|\s+\||\s+for|$)/i);
   if (companyMatch) {
     company = companyMatch[1].trim();
   }
   
-  // Try to extract position
-  const positionMatch = title.match(/(?:for|position:|role:)\s+([A-Za-z\s]+?)(?:\s+-|\s+\||\s+at|$)/i) ||
-                       description.match(/(?:position:|role:)\s+([A-Za-z\s]+?)(?:\n|$)/i);
+  // Try to extract position - including numbers, slashes, and special characters
+  const positionMatch = title.match(/(?:for|position:|role:)\s+([A-Za-z0-9\s/&\-II]+?)(?:\s+-|\s+\||\s+at|$)/i) ||
+                       description.match(/(?:position:|role:)\s+([A-Za-z0-9\s/&\-II]+?)(?:\n|$)/i);
   if (positionMatch) {
     position = positionMatch[1].trim();
   }

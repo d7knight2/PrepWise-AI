@@ -69,6 +69,8 @@ describe('Calendar Events API - Helper Functions', () => {
         { title: 'Interview with Google', expected: 'Google' },
         { title: 'Technical Interview at Microsoft', expected: 'Microsoft' },
         { title: 'Interview @ Amazon', expected: 'Amazon' },
+        { title: 'Interview with ABC-Tech Corp.', expected: 'ABC-Tech Corp.' },
+        { title: 'Interview at google', expected: 'google' },
         { title: 'Facebook Interview', expected: 'Company' },
       ];
 
@@ -88,6 +90,8 @@ describe('Calendar Events API - Helper Functions', () => {
         { title: 'Interview for Software Engineer', expected: 'Software Engineer' },
         { title: 'Technical Interview - Position: Senior Developer', expected: 'Senior Developer' },
         { title: 'Interview Role: Product Manager', expected: 'Product Manager' },
+        { title: 'Interview for Software Engineer II', expected: 'Software Engineer II' },
+        { title: 'Interview for UI/UX Designer', expected: 'UI/UX Designer' },
       ];
 
       patterns.forEach(({ title, expected }) => {

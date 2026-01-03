@@ -278,14 +278,14 @@ export default function Dashboard() {
                             href={interview.meetingLink}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="mt-2 text-sm text-primary-600 hover:text-primary-700 font-medium inline-block"
+                            className="mt-2 text-sm text-primary-600 hover:text-primary-700 font-medium inline-block mr-4"
                           >
                             Join Meeting →
                           </a>
                         )}
                         <button 
                           onClick={() => router.push('/mock-interview')}
-                          className="mt-2 ml-4 text-sm text-primary-600 hover:text-primary-700 font-medium"
+                          className="mt-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
                         >
                           Prepare Now →
                         </button>
