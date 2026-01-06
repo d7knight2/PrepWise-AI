@@ -1,0 +1,206 @@
+name: Nightly Merge Conflict Resolution
+
+on:
+  schedule:
+    # Run every night at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual triggering for testing
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  resolve-conflicts:
+    runs-on: ubuntu-latest
+    name: Auto-resolve merge conflicts in open PRs
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for all branches
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure Git
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+      
+      - name: Get open pull requests
+        id: get-prs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pullRequests } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            
+            core.info(`Found ${pullRequests.length} open pull requests`);
+            return pullRequests;
+      
+      - name: Check and resolve conflicts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pullRequests = ${{ steps.get-prs.outputs.result }};
+            const results = {
+              checked: 0,
+              withConflicts: 0,
+              resolved: 0,
+              failed: []
+            };
+            
+            for (const pr of pullRequests) {
+              results.checked++;
+              
+              try {
+                // Get PR details to check for conflicts
+                const { data: prData } = await github.rest.pulls.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number
+                });
+                
+                core.info(`\n--- Processing PR #${pr.number}: ${pr.title} ---`);
+                core.info(`Branch: ${pr.head.ref} -> ${pr.base.ref}`);
+                core.info(`Mergeable: ${prData.mergeable}`);
+                core.info(`Mergeable state: ${prData.mergeable_state}`);
+                
+                // Check if PR has conflicts
+                if (prData.mergeable === false) {
+                  results.withConflicts++;
+                  core.warning(`PR #${pr.number} has merge conflicts`);
+                  
+                  try {
+                    // Attempt to update branch with base
+                    core.info(`Attempting to update PR #${pr.number} branch...`);
+                    
+                    // Update the branch by merging the base branch
+                    await github.rest.pulls.updateBranch({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      pull_number: pr.number
+                    });
+                    
+                    core.info(`✓ Successfully updated PR #${pr.number}`);
+                    results.resolved++;
+                    
+                    // Add a comment to the PR
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: pr.number,
+                      body: `🤖 **Automated Merge Conflict Resolution**
+                      
+The branch has been automatically updated with the latest changes from \`${pr.base.ref}\`.
+
+**Action:** Nightly merge conflict resolution workflow
+**Time:** ${new Date().toISOString()}
+
+Please review the changes and ensure everything is working correctly.`
+                    });
+                    
+                  } catch (updateError) {
+                    core.error(`Failed to auto-resolve PR #${pr.number}: ${updateError.message}`);
+                    
+                    results.failed.push({
+                      pr: pr.number,
+                      title: pr.title,
+                      error: updateError.message,
+                      branch: pr.head.ref,
+                      base: pr.base.ref
+                    });
+                    
+                    // Add a comment about the failure
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: pr.number,
+                      body: `⚠️ **Automated Merge Conflict Resolution Failed**
+                      
+The automatic merge conflict resolution workflow was unable to resolve conflicts in this PR.
+
+**Error:** ${updateError.message}
+**Action Required:** Manual intervention needed to resolve conflicts.
+
+**Time:** ${new Date().toISOString()}
+
+Please resolve the conflicts manually by:
+1. Pulling the latest changes from \`${pr.base.ref}\`
+2. Merging or rebasing your branch
+3. Resolving any conflicts
+4. Pushing the updated branch`
+                    });
+                  }
+                } else if (prData.mergeable === null) {
+                  core.info(`PR #${pr.number} mergeable status is still computing, skipping...`);
+                } else {
+                  core.info(`✓ PR #${pr.number} has no conflicts`);
+                }
+                
+              } catch (error) {
+                core.error(`Error processing PR #${pr.number}: ${error.message}`);
+                results.failed.push({
+                  pr: pr.number,
+                  title: pr.title,
+                  error: error.message,
+                  branch: pr.head?.ref || 'unknown',
+                  base: pr.base?.ref || 'unknown'
+                });
+              }
+            }
+            
+            // Generate summary
+            core.info('\n=== Merge Conflict Resolution Summary ===');
+            core.info(`Total PRs checked: ${results.checked}`);
+            core.info(`PRs with conflicts: ${results.withConflicts}`);
+            core.info(`Successfully resolved: ${results.resolved}`);
+            core.info(`Failed to resolve: ${results.failed.length}`);
+            
+            if (results.failed.length > 0) {
+              core.warning('\n=== Failed Resolutions ===');
+              for (const failure of results.failed) {
+                core.warning(`PR #${failure.pr} (${failure.branch} -> ${failure.base})`);
+                core.warning(`  Title: ${failure.title}`);
+                core.warning(`  Error: ${failure.error}`);
+              }
+            }
+            
+            // Set output for potential use in notifications
+            core.setOutput('checked', results.checked);
+            core.setOutput('withConflicts', results.withConflicts);
+            core.setOutput('resolved', results.resolved);
+            core.setOutput('failed', results.failed.length);
+            
+            // Create a workflow summary
+            await core.summary
+              .addHeading('Nightly Merge Conflict Resolution Report')
+              .addTable([
+                [{data: 'Metric', header: true}, {data: 'Count', header: true}],
+                ['Total PRs Checked', results.checked.toString()],
+                ['PRs with Conflicts', results.withConflicts.toString()],
+                ['Successfully Resolved', results.resolved.toString()],
+                ['Failed to Resolve', results.failed.length.toString()]
+              ])
+              .write();
+            
+            if (results.failed.length > 0) {
+              await core.summary
+                .addHeading('Failed Resolutions', 3)
+                .addList(results.failed.map(f => `PR #${f.pr}: ${f.title} - ${f.error}`))
+                .write();
+            }
+            
+            return results;
+      
+      - name: Report summary
+        if: always()
+        run: |
+          echo "### Merge Conflict Resolution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "Workflow completed at $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for detailed information." >> $GITHUB_STEP_SUMMARY
