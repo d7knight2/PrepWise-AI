@@ -1,19 +1,24 @@
 name: Nightly Merge Conflict Resolution
 
 on:
-  # Run nightly at 2 AM UTC
+  # Run nightly at 2 AM UTC (see README for timezone conversions)
+  # 2 AM UTC = 9 PM EST / 6 PM PST (previous day)
+  # 2 AM UTC = 10 PM EDT / 7 PM PDT (previous day)
   schedule:
     - cron: '0 2 * * *'
-  # Allow manual trigger
+  # Allow manual trigger for testing
   workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   resolve-conflicts:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: false
     
     steps:
       - name: Checkout repository
@@ -21,23 +26,44 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+        timeout-minutes: 5
       
       - name: Configure Git
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          echo "✅ Git configured successfully"
       
       - name: Fetch all open pull requests
         id: get-prs
         run: |
           echo "📋 Fetching open pull requests..."
-          prs=$(gh pr list --state open --json number,headRefName,baseRefName --jq '.[] | "\(.number):\(.headRefName):\(.baseRefName)"')
+          echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          
+          # Retry logic for API calls
+          max_retries=3
+          retry_count=0
+          
+          while [ $retry_count -lt $max_retries ]; do
+            if prs=$(gh pr list --state open --json number,headRefName,baseRefName --jq '.[] | "\(.number):\(.headRefName):\(.baseRefName)"' 2>&1); then
+              break
+            else
+              retry_count=$((retry_count + 1))
+              echo "⚠️  Attempt $retry_count failed. Retrying..."
+              sleep 5
+            fi
+          done
+          
+          if [ $retry_count -eq $max_retries ]; then
+            echo "❌ ERROR: Failed to fetch pull requests after $max_retries attempts"
+            exit 1
+          fi
           
           if [ -z "$prs" ]; then
             echo "✅ No open pull requests found"
             echo "has_prs=false" >> $GITHUB_OUTPUT
           else
-            echo "Found open pull requests:"
+            echo "Found $(echo "$prs" | wc -l) open pull request(s):"
             echo "$prs"
             echo "$prs" > /tmp/prs.txt
             echo "has_prs=true" >> $GITHUB_OUTPUT
@@ -49,106 +75,285 @@ jobs:
         if: steps.get-prs.outputs.has_prs == 'true'
         run: |
           echo "🔍 Checking pull requests for merge conflicts..."
+          echo "Start time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          
+          # Initialize counters for summary
+          total_prs=0
+          successful_auto_resolves=0
+          failed_auto_resolves=0
+          no_conflicts=0
+          errors=0
           
           while IFS=: read -r pr_number head_branch base_branch; do
+            total_prs=$((total_prs + 1))
             echo ""
             echo "================================================"
-            echo "Processing PR #$pr_number"
+            echo "Processing PR #$pr_number ($total_prs of $(wc -l < /tmp/prs.txt))"
             echo "  Head branch: $head_branch"
             echo "  Base branch: $base_branch"
+            echo "  Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
             echo "================================================"
             
-            # Fetch latest changes
-            echo "📥 Fetching latest changes..."
-            git fetch origin "$base_branch" "$head_branch" || {
-              echo "❌ ERROR: Failed to fetch branches for PR #$pr_number"
+            # Validate PR number
+            if ! [[ "$pr_number" =~ ^[0-9]+$ ]]; then
+              echo "❌ ERROR: Invalid PR number: $pr_number"
+              errors=$((errors + 1))
               continue
-            }
+            fi
+            
+            # Fetch latest changes with retry logic
+            echo "📥 Fetching latest changes..."
+            fetch_retries=0
+            max_fetch_retries=3
+            
+            while [ $fetch_retries -lt $max_fetch_retries ]; do
+              if git fetch origin "$base_branch" "$head_branch" 2>&1; then
+                echo "✅ Successfully fetched branches"
+                break
+              else
+                fetch_retries=$((fetch_retries + 1))
+                echo "⚠️  Fetch attempt $fetch_retries failed. Retrying..."
+                sleep 5
+              fi
+            done
+            
+            if [ $fetch_retries -eq $max_fetch_retries ]; then
+              echo "❌ ERROR: Failed to fetch branches for PR #$pr_number after $max_fetch_retries attempts"
+              errors=$((errors + 1))
+
+              # Try to comment on PR about the error
+              gh pr comment "$pr_number" --body "⚠️ **Automated Merge Conflict Resolution Failed** - Unable to fetch branches for this PR. This may be a temporary issue. The workflow will retry during the next scheduled run. If this persists, please check the workflow logs." 2>&1 || echo "⚠️  Failed to add error comment to PR #$pr_number"
+
+              continue
+            fi
+            
+            # Verify branches exist
+            if ! git rev-parse --verify "origin/$head_branch" >/dev/null 2>&1; then
+              echo "❌ ERROR: Head branch 'origin/$head_branch' does not exist for PR #$pr_number"
+              errors=$((errors + 1))
+              continue
+            fi
+            
+            if ! git rev-parse --verify "origin/$base_branch" >/dev/null 2>&1; then
+              echo "❌ ERROR: Base branch 'origin/$base_branch' does not exist for PR #$pr_number"
+              errors=$((errors + 1))
+              continue
+            fi
             
             # Check if PR has conflicts
             echo "🔍 Checking for merge conflicts..."
             
-            # Try to check if there are conflicts
             # Use PR number for temp branch to avoid special character issues
-            temp_branch="temp-pr-${pr_number}"
-            git checkout -B "$temp_branch" "origin/$head_branch" || {
+            temp_branch="temp-conflict-check-pr-${pr_number}"
+            
+            # Cleanup any existing temp branch
+            git branch -D "$temp_branch" 2>/dev/null || true
+            
+            if ! git checkout -B "$temp_branch" "origin/$head_branch" 2>&1; then
               echo "❌ ERROR: Failed to checkout head branch for PR #$pr_number"
+              errors=$((errors + 1))
               continue
-            }
+            fi
+            
+            # Get commit SHAs for verification
+            head_sha=$(git rev-parse HEAD)
+            base_sha=$(git rev-parse "origin/$base_branch")
+            echo "ℹ️  Head SHA: $head_sha"
+            echo "ℹ️  Base SHA: $base_sha"
             
             # Attempt to merge base branch
             echo "🔄 Attempting to merge $base_branch into $head_branch..."
             
-            if git merge "origin/$base_branch" --no-edit; then
-              echo "✅ No conflicts detected or merge successful for PR #$pr_number"
+            if git merge "origin/$base_branch" --no-edit --no-ff 2>&1; then
+              echo "✅ Merge completed successfully"
               
               # Check if there are actual changes to push
               if git diff "origin/$head_branch" --quiet; then
-                echo "ℹ️  No changes to push for PR #$pr_number"
+                echo "ℹ️  No changes to push for PR #$pr_number (already up to date)"
+                no_conflicts=$((no_conflicts + 1))
               else
-                echo "📤 Pushing resolved changes to $head_branch..."
-                git push origin "$temp_branch:$head_branch" || {
-                  echo "❌ ERROR: Failed to push changes for PR #$pr_number"
+                echo "📊 Changes detected, validating merge..."
+                
+                # Verify merge commit exists
+                if ! git rev-parse HEAD >/dev/null 2>&1; then
+                  echo "❌ ERROR: Invalid merge state for PR #$pr_number"
+                  errors=$((errors + 1))
                   git merge --abort 2>/dev/null || true
                   continue
-                }
-                echo "✅ Successfully pushed resolved changes for PR #$pr_number"
+                fi
                 
-                # Add comment to PR
-                gh pr comment "$pr_number" --body "✅ Merge conflicts have been automatically resolved by merging the latest changes from \`$base_branch\`." || {
-                  echo "⚠️  WARNING: Failed to add comment to PR #$pr_number"
-                }
+                # Get list of changed files
+                changed_files=$(git diff --name-only "origin/$head_branch" HEAD | head -20)
+                echo "📝 Files that will be updated:"
+                echo "$changed_files"
+                
+                echo "📤 Pushing resolved changes to $head_branch..."
+                
+                # Push with retry logic
+                push_retries=0
+                max_push_retries=3
+                push_success=false
+                
+                while [ $push_retries -lt $max_push_retries ]; do
+                  if git push origin "$temp_branch:$head_branch" 2>&1; then
+                    push_success=true
+                    break
+                  else
+                    push_retries=$((push_retries + 1))
+                    echo "⚠️  Push attempt $push_retries failed. Retrying..."
+                    sleep 5
+                  fi
+                done
+                
+                if [ "$push_success" = true ]; then
+                  echo "✅ Successfully pushed resolved changes for PR #$pr_number"
+                  successful_auto_resolves=$((successful_auto_resolves + 1))
+                  
+                  # Add comment to PR with details
+                  comment_body="✅ **Merge Conflicts Automatically Resolved**
+
+The latest changes from \`$base_branch\` have been automatically merged into this PR.
+
+**Details:**
+- Base branch: \`$base_branch\` (\`${base_sha:0:7}\`)
+- Merge timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+- Files updated: $(echo "$changed_files" | wc -l)
+
+Please review the changes and ensure everything looks correct."
+                  
+                  gh pr comment "$pr_number" --body "$comment_body" 2>&1 || {
+                    echo "⚠️  WARNING: Failed to add comment to PR #$pr_number"
+                  }
+                else
+                  echo "❌ ERROR: Failed to push changes for PR #$pr_number after $max_push_retries attempts"
+                  errors=$((errors + 1))
+                  git merge --abort 2>/dev/null || true
+
+                  gh pr comment "$pr_number" --body "⚠️ **Automated Merge Failed** - Merge conflicts were resolved locally, but failed to push changes after multiple attempts. Please try manually merging \`$base_branch\` into your branch. For troubleshooting, see: [Merge Conflict Resolution Guide](.github/workflows/MERGE_CONFLICT_TROUBLESHOOTING.md)" 2>&1 || echo "⚠️  Failed to add error comment"
+                fi
               fi
             else
               echo "⚠️  Merge conflicts detected in PR #$pr_number"
+              failed_auto_resolves=$((failed_auto_resolves + 1))
+              
+              # Get conflict file list
+              conflict_files=$(git diff --name-only --diff-filter=U 2>/dev/null | head -20 || echo "Unable to determine conflict files")
               
               # Abort the merge
-              git merge --abort
+              git merge --abort 2>/dev/null || true
               
-              # Get conflict details (already in failed merge state, just log info)
-              echo "📝 Conflict detected - manual resolution required"
+              echo "📝 Conflicts detected in the following files:"
+              echo "$conflict_files"
               
-              # Add comment to PR about conflicts
-              gh pr comment "$pr_number" --body "⚠️ **Merge Conflict Detected**
+              # Add detailed comment to PR about conflicts
+              comment_body="⚠️ **Merge Conflicts Detected**
 
-              This pull request has merge conflicts with the base branch \`$base_branch\` that could not be automatically resolved.
+This pull request has merge conflicts with the base branch \`$base_branch\` that require manual resolution.
 
-              Please resolve the conflicts manually:
-              1. Pull the latest changes from \`$base_branch\`
-              2. Resolve the conflicts in your local environment
-              3. Push the resolved changes
+**Conflicting files:**
+\`\`\`
+$conflict_files
+\`\`\`
 
-              For help resolving conflicts, see: https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/addressing-merge-conflicts/resolving-a-merge-conflict-using-the-command-line" || {
+**To resolve manually:**
+1. Sync your local branch with the latest changes:
+   \`\`\`bash
+   git checkout $head_branch
+   git pull origin $head_branch
+   git fetch origin $base_branch
+   \`\`\`
+
+2. Merge the base branch:
+   \`\`\`bash
+   git merge origin/$base_branch
+   \`\`\`
+
+3. Resolve conflicts in the listed files, then:
+   \`\`\`bash
+   git add .
+   git commit
+   git push origin $head_branch
+   \`\`\`
+
+**Need help?** See our [troubleshooting guide](.github/workflows/MERGE_CONFLICT_TROUBLESHOOTING.md) or [GitHub's documentation](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/addressing-merge-conflicts/resolving-a-merge-conflict-using-the-command-line)."
+              
+              gh pr comment "$pr_number" --body "$comment_body" 2>&1 || {
                 echo "⚠️  WARNING: Failed to add comment to PR #$pr_number"
               }
               
               echo "❌ Could not auto-resolve conflicts for PR #$pr_number"
             fi
             
-            # Cleanup
+            # Cleanup temp branch
             default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
-            git checkout "$default_branch" 2>/dev/null || true
-            git branch -D "$temp_branch" 2>/dev/null || true
+            
+            # Return to default branch
+            if git checkout "$default_branch" 2>&1; then
+              echo "✅ Returned to $default_branch"
+            else
+              echo "⚠️  Warning: Could not return to $default_branch, trying main"
+              git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
+            fi
+            
+            # Delete temp branch
+            git branch -D "$temp_branch" 2>/dev/null || echo "ℹ️  Temp branch already cleaned up"
+            
+            echo "✅ Completed processing PR #$pr_number"
             
           done < /tmp/prs.txt
           
           echo ""
           echo "================================================"
-          echo "✅ Conflict resolution process completed"
+          echo "📊 WORKFLOW SUMMARY"
           echo "================================================"
+          echo "Total PRs processed: $total_prs"
+          echo "✅ Successfully auto-resolved: $successful_auto_resolves"
+          echo "⚠️  Manual resolution required: $failed_auto_resolves"
+          echo "ℹ️  No conflicts (up to date): $no_conflicts"
+          echo "❌ Errors encountered: $errors"
+          echo "End time: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "================================================"
+          
+          # Save summary to output for later steps
+          echo "total_prs=$total_prs" >> $GITHUB_OUTPUT
+          echo "successful=$successful_auto_resolves" >> $GITHUB_OUTPUT
+          echo "failed=$failed_auto_resolves" >> $GITHUB_OUTPUT
+          echo "no_conflicts=$no_conflicts" >> $GITHUB_OUTPUT
+          echo "errors=$errors" >> $GITHUB_OUTPUT
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+        id: process-prs
       
       - name: Summary
         if: always()
         run: |
-          echo "📊 Workflow Summary"
-          echo "=================="
+          echo "📊 FINAL WORKFLOW SUMMARY"
+          echo "========================="
           echo "Status: ${{ job.status }}"
-          echo "Timestamp: $(date -u)"
+          echo "Workflow Run ID: ${{ github.run_id }}"
+          echo "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo ""
           
           if [ "${{ steps.get-prs.outputs.has_prs }}" == "true" ]; then
-            echo "✅ Processed all open pull requests"
+            echo "✅ Processed pull requests"
+            echo "  Total PRs: ${{ steps.process-prs.outputs.total_prs || 0 }}"
+            echo "  Auto-resolved: ${{ steps.process-prs.outputs.successful || 0 }}"
+            echo "  Manual resolution needed: ${{ steps.process-prs.outputs.failed || 0 }}"
+            echo "  No conflicts: ${{ steps.process-prs.outputs.no_conflicts || 0 }}"
+            echo "  Errors: ${{ steps.process-prs.outputs.errors || 0 }}"
           else
             echo "ℹ️  No pull requests to process"
           fi
+          echo ""
+          echo "For troubleshooting, see: .github/workflows/MERGE_CONFLICT_TROUBLESHOOTING.md"
+          echo "========================="
+      
+      - name: Report failure
+        if: failure()
+        run: |
+          echo "❌ Workflow failed!"
+          echo "Please check the logs above for details."
+          echo "Common issues and solutions are documented in:"
+          echo "  .github/workflows/MERGE_CONFLICT_TROUBLESHOOTING.md"
+          exit 1
