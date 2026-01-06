@@ -69,7 +69,8 @@ jobs:
             echo "🔍 Checking for merge conflicts..."
             
             # Try to check if there are conflicts
-            temp_branch="temp-pr-${pr_number}-$head_branch"
+            # Use PR number for temp branch to avoid special character issues
+            temp_branch="temp-pr-${pr_number}"
             git checkout -B "$temp_branch" "origin/$head_branch" || {
               echo "❌ ERROR: Failed to checkout head branch for PR #$pr_number"
               continue
@@ -126,7 +127,7 @@ jobs:
             
             # Cleanup
             default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
-            git checkout "$default_branch" 2>/dev/null || git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
+            git checkout "$default_branch" 2>/dev/null || true
             git branch -D "$temp_branch" 2>/dev/null || true
             
           done < /tmp/prs.txt
