@@ -65,7 +65,10 @@ cleanup_test_branches() {
     done
     
     # Clean up local branches
-    git branch | grep "${TEST_PREFIX}" | xargs -r git branch -D 2>/dev/null || true
+    local_test_branches=$(git branch | grep "${TEST_PREFIX}" || true)
+    if [ -n "$local_test_branches" ]; then
+        echo "$local_test_branches" | xargs git branch -D 2>/dev/null || true
+    fi
 }
 
 # Function to create a test scenario
