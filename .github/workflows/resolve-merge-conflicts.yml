@@ -210,18 +210,16 @@ jobs:
                   successful_auto_resolves=$((successful_auto_resolves + 1))
                   
                   # Add comment to PR with details
-                  comment_body="✅ **Merge Conflicts Automatically Resolved**
+                  gh pr comment "$pr_number" --body "✅ **Merge Conflicts Automatically Resolved**
 
-The latest changes from \`$base_branch\` have been automatically merged into this PR.
+                  The latest changes from \`$base_branch\` have been automatically merged into this PR.
 
-**Details:**
-- Base branch: \`$base_branch\` (\`${base_sha:0:7}\`)
-- Merge timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-- Files updated: $(echo "$changed_files" | wc -l)
+                  **Details:**
+                  - Base branch: \`$base_branch\` (\`${base_sha:0:7}\`)
+                  - Merge timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+                  - Files updated: $(echo "$changed_files" | wc -l)
 
-Please review the changes and ensure everything looks correct."
-                  
-                  gh pr comment "$pr_number" --body "$comment_body" 2>&1 || {
+                  Please review the changes and ensure everything looks correct." 2>&1 || {
                     echo "⚠️  WARNING: Failed to add comment to PR #$pr_number"
                   }
                 else
@@ -246,38 +244,36 @@ Please review the changes and ensure everything looks correct."
               echo "$conflict_files"
               
               # Add detailed comment to PR about conflicts
-              comment_body="⚠️ **Merge Conflicts Detected**
+              gh pr comment "$pr_number" --body "⚠️ **Merge Conflicts Detected**
 
-This pull request has merge conflicts with the base branch \`$base_branch\` that require manual resolution.
+              This pull request has merge conflicts with the base branch \`$base_branch\` that require manual resolution.
 
-**Conflicting files:**
-\`\`\`
-$conflict_files
-\`\`\`
+              **Conflicting files:**
+              \`\`\`
+              $conflict_files
+              \`\`\`
 
-**To resolve manually:**
-1. Sync your local branch with the latest changes:
-   \`\`\`bash
-   git checkout $head_branch
-   git pull origin $head_branch
-   git fetch origin $base_branch
-   \`\`\`
+              **To resolve manually:**
+              1. Sync your local branch with the latest changes:
+                 \`\`\`bash
+                 git checkout $head_branch
+                 git pull origin $head_branch
+                 git fetch origin $base_branch
+                 \`\`\`
 
-2. Merge the base branch:
-   \`\`\`bash
-   git merge origin/$base_branch
-   \`\`\`
+              2. Merge the base branch:
+                 \`\`\`bash
+                 git merge origin/$base_branch
+                 \`\`\`
 
-3. Resolve conflicts in the listed files, then:
-   \`\`\`bash
-   git add .
-   git commit
-   git push origin $head_branch
-   \`\`\`
+              3. Resolve conflicts in the listed files, then:
+                 \`\`\`bash
+                 git add .
+                 git commit
+                 git push origin $head_branch
+                 \`\`\`
 
-**Need help?** See our [troubleshooting guide](.github/workflows/MERGE_CONFLICT_TROUBLESHOOTING.md) or [GitHub's documentation](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/addressing-merge-conflicts/resolving-a-merge-conflict-using-the-command-line)."
-              
-              gh pr comment "$pr_number" --body "$comment_body" 2>&1 || {
+              **Need help?** See our [troubleshooting guide](.github/workflows/MERGE_CONFLICT_TROUBLESHOOTING.md) or [GitHub's documentation](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/addressing-merge-conflicts/resolving-a-merge-conflict-using-the-command-line)." 2>&1 || {
                 echo "⚠️  WARNING: Failed to add comment to PR #$pr_number"
               }
               
