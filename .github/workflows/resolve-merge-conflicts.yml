@@ -1,9 +1,9 @@
-name: Nightly Merge Conflict Resolution
+name: Hourly Merge Conflict Resolution
 
 on:
-  # Run nightly at 2 AM UTC
+  # Run hourly at the start of each hour
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 * * * *'
   # Allow manual trigger
   workflow_dispatch:
 

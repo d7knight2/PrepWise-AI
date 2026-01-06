@@ -1,12 +1,12 @@
 # GitHub Actions Workflows
 
-## Nightly Merge Conflict Resolution
+## Hourly Merge Conflict Resolution
 
 ### Overview
 The `resolve-merge-conflicts.yml` workflow automatically detects and resolves merge conflicts in open pull requests.
 
 ### Trigger Schedule
-- **Nightly**: Runs automatically every night at 2 AM UTC (via cron schedule)
+- **Hourly**: Runs automatically every hour at the start of each hour (via cron schedule)
 - **Manual**: Can be triggered manually via the Actions tab using `workflow_dispatch`
 
 ### How It Works
@@ -61,7 +61,7 @@ The workflow provides comprehensive logging:
 
 To manually trigger this workflow:
 1. Go to the Actions tab in the repository
-2. Select "Nightly Merge Conflict Resolution" from the workflows list
+2. Select "Hourly Merge Conflict Resolution" from the workflows list
 3. Click "Run workflow"
 4. Select the branch and click "Run workflow"
 
@@ -91,4 +91,4 @@ If the workflow fails:
 - Monitor the workflow runs regularly
 - Review the comments added to PRs by the bot
 - Follow up on PRs that require manual conflict resolution
-- Adjust the cron schedule if needed for your timezone/workflow
+- The workflow runs hourly to ensure timely conflict resolution
