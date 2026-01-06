@@ -98,10 +98,20 @@ create_test_scenario() {
     print_info "Creating PR branch: $pr_branch"
     git checkout -b "$pr_branch" "$base_branch"
     
-    # Modify file in PR branch
-    echo "Modified in PR branch" >> "test-merge-conflicts/${scenario_name}.txt"
-    git add "test-merge-conflicts/${scenario_name}.txt"
-    git commit -m "Modify file in PR branch for $scenario_name"
+    # Modify file in PR branch based on scenario
+    if [ "$scenario_name" == "multiple-files" ]; then
+        # For multiple-files scenario, modify first file and create second file
+        echo "Modified in PR branch" >> "test-merge-conflicts/${scenario_name}.txt"
+        echo "Second file from PR" > "test-merge-conflicts/${scenario_name}-second.txt"
+        git add "test-merge-conflicts/"
+        git commit -m "Modify files in PR branch for $scenario_name"
+    else
+        # For other scenarios, just modify the first file
+        echo "Modified in PR branch" >> "test-merge-conflicts/${scenario_name}.txt"
+        git add "test-merge-conflicts/${scenario_name}.txt"
+        git commit -m "Modify file in PR branch for $scenario_name"
+    fi
+    
     git push origin "$pr_branch"
     print_success "PR branch created and pushed"
     
@@ -124,13 +134,13 @@ create_test_scenario() {
         git push origin "$base_branch"
         print_success "Non-conflicting change created (this should auto-resolve)"
     elif [ "$scenario_name" == "multiple-files" ]; then
-        # Create conflict in multiple files
-        echo "Conflict in first file" >> "test-merge-conflicts/${scenario_name}.txt"
-        echo "Another conflict" > "test-merge-conflicts/${scenario_name}-second.txt"
+        # Create conflicts in multiple files
+        echo "Conflict in first file (BASE)" >> "test-merge-conflicts/${scenario_name}.txt"
+        echo "Second file from BASE (CONFLICT!)" > "test-merge-conflicts/${scenario_name}-second.txt"
         git add "test-merge-conflicts/"
         git commit -m "Create multiple file conflicts in base"
         git push origin "$base_branch"
-        print_success "Multiple file conflicts created"
+        print_success "Multiple file conflicts created (both files will have conflicts)"
     fi
     
     print_success "Test scenario '$scenario_name' setup complete"
