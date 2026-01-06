@@ -95,14 +95,7 @@ jobs:
                       owner: context.repo.owner,
                       repo: context.repo.repo,
                       issue_number: pr.number,
-                      body: `🤖 **Automated Merge Conflict Resolution**
-                      
-The branch has been automatically updated with the latest changes from \`${pr.base.ref}\`.
-
-**Action:** Nightly merge conflict resolution workflow
-**Time:** ${new Date().toISOString()}
-
-Please review the changes and ensure everything is working correctly.`
+                      body: `🤖 **Automated Merge Conflict Resolution**\n\nThe branch has been automatically updated with the latest changes from \`${pr.base.ref}\`.\n\n**Action:** Nightly merge conflict resolution workflow\n**Time:** ${new Date().toISOString()}\n\nPlease review the changes and ensure everything is working correctly.`
                     });
                     
                   } catch (updateError) {
@@ -121,20 +114,7 @@ Please review the changes and ensure everything is working correctly.`
                       owner: context.repo.owner,
                       repo: context.repo.repo,
                       issue_number: pr.number,
-                      body: `⚠️ **Automated Merge Conflict Resolution Failed**
-                      
-The automatic merge conflict resolution workflow was unable to resolve conflicts in this PR.
-
-**Error:** ${updateError.message}
-**Action Required:** Manual intervention needed to resolve conflicts.
-
-**Time:** ${new Date().toISOString()}
-
-Please resolve the conflicts manually by:
-1. Pulling the latest changes from \`${pr.base.ref}\`
-2. Merging or rebasing your branch
-3. Resolving any conflicts
-4. Pushing the updated branch`
+                      body: `⚠️ **Automated Merge Conflict Resolution Failed**\n\nThe automatic merge conflict resolution workflow was unable to resolve conflicts in this PR.\n\n**Error:** ${updateError.message}\n**Action Required:** Manual intervention needed to resolve conflicts.\n\n**Time:** ${new Date().toISOString()}\n\nPlease resolve the conflicts manually by:\n1. Pulling the latest changes from \`${pr.base.ref}\`\n2. Merging or rebasing your branch\n3. Resolving any conflicts\n4. Pushing the updated branch`
                     });
                   }
                 } else if (prData.mergeable === null) {
