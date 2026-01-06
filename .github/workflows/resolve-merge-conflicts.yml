@@ -1,0 +1,153 @@
+name: Nightly Merge Conflict Resolution
+
+on:
+  # Run nightly at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * *'
+  # Allow manual trigger
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  resolve-conflicts:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      
+      - name: Fetch all open pull requests
+        id: get-prs
+        run: |
+          echo "📋 Fetching open pull requests..."
+          prs=$(gh pr list --state open --json number,headRefName,baseRefName --jq '.[] | "\(.number):\(.headRefName):\(.baseRefName)"')
+          
+          if [ -z "$prs" ]; then
+            echo "✅ No open pull requests found"
+            echo "has_prs=false" >> $GITHUB_OUTPUT
+          else
+            echo "Found open pull requests:"
+            echo "$prs"
+            echo "$prs" > /tmp/prs.txt
+            echo "has_prs=true" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Process pull requests for conflicts
+        if: steps.get-prs.outputs.has_prs == 'true'
+        run: |
+          echo "🔍 Checking pull requests for merge conflicts..."
+          
+          while IFS=: read -r pr_number head_branch base_branch; do
+            echo ""
+            echo "================================================"
+            echo "Processing PR #$pr_number"
+            echo "  Head branch: $head_branch"
+            echo "  Base branch: $base_branch"
+            echo "================================================"
+            
+            # Fetch latest changes
+            echo "📥 Fetching latest changes..."
+            git fetch origin "$base_branch" "$head_branch" || {
+              echo "❌ ERROR: Failed to fetch branches for PR #$pr_number"
+              continue
+            }
+            
+            # Check if PR has conflicts
+            echo "🔍 Checking for merge conflicts..."
+            
+            # Try to check if there are conflicts
+            git checkout -B "temp-$head_branch" "origin/$head_branch" || {
+              echo "❌ ERROR: Failed to checkout head branch for PR #$pr_number"
+              continue
+            }
+            
+            # Attempt to merge base branch
+            echo "🔄 Attempting to merge $base_branch into $head_branch..."
+            
+            if git merge "origin/$base_branch" --no-edit; then
+              echo "✅ No conflicts detected or merge successful for PR #$pr_number"
+              
+              # Check if there are actual changes to push
+              if git diff "origin/$head_branch" --quiet; then
+                echo "ℹ️  No changes to push for PR #$pr_number"
+              else
+                echo "📤 Pushing resolved changes to $head_branch..."
+                git push origin "temp-$head_branch:$head_branch" || {
+                  echo "❌ ERROR: Failed to push changes for PR #$pr_number"
+                  git merge --abort 2>/dev/null || true
+                  continue
+                }
+                echo "✅ Successfully pushed resolved changes for PR #$pr_number"
+                
+                # Add comment to PR
+                gh pr comment "$pr_number" --body "✅ Merge conflicts have been automatically resolved by merging the latest changes from \`$base_branch\`." || {
+                  echo "⚠️  WARNING: Failed to add comment to PR #$pr_number"
+                }
+              fi
+            else
+              echo "⚠️  Merge conflicts detected in PR #$pr_number"
+              
+              # Abort the merge
+              git merge --abort
+              
+              # Get conflict details
+              echo "📝 Conflict details:"
+              git merge "origin/$base_branch" --no-commit --no-ff 2>&1 | grep -E "CONFLICT|Merge conflict" || echo "Unable to get detailed conflict information"
+              git merge --abort 2>/dev/null || true
+              
+              # Add comment to PR about conflicts
+              gh pr comment "$pr_number" --body "⚠️ **Merge Conflict Detected**
+
+              This pull request has merge conflicts with the base branch \`$base_branch\` that could not be automatically resolved.
+
+              Please resolve the conflicts manually:
+              1. Pull the latest changes from \`$base_branch\`
+              2. Resolve the conflicts in your local environment
+              3. Push the resolved changes
+
+              For help resolving conflicts, see: https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/addressing-merge-conflicts/resolving-a-merge-conflict-using-the-command-line" || {
+                echo "⚠️  WARNING: Failed to add comment to PR #$pr_number"
+              }
+              
+              echo "❌ Could not auto-resolve conflicts for PR #$pr_number"
+            fi
+            
+            # Cleanup
+            git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
+            git branch -D "temp-$head_branch" 2>/dev/null || true
+            
+          done < /tmp/prs.txt
+          
+          echo ""
+          echo "================================================"
+          echo "✅ Conflict resolution process completed"
+          echo "================================================"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "📊 Workflow Summary"
+          echo "=================="
+          echo "Status: ${{ job.status }}"
+          echo "Timestamp: $(date -u)"
+          
+          if [ "${{ steps.get-prs.outputs.has_prs }}" == "true" ]; then
+            echo "✅ Processed all open pull requests"
+          else
+            echo "ℹ️  No pull requests to process"
+          fi
