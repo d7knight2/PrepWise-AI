@@ -69,7 +69,8 @@ jobs:
             echo "🔍 Checking for merge conflicts..."
             
             # Try to check if there are conflicts
-            git checkout -B "temp-$head_branch" "origin/$head_branch" || {
+            temp_branch="temp-pr-${pr_number}-$head_branch"
+            git checkout -B "$temp_branch" "origin/$head_branch" || {
               echo "❌ ERROR: Failed to checkout head branch for PR #$pr_number"
               continue
             }
@@ -85,7 +86,7 @@ jobs:
                 echo "ℹ️  No changes to push for PR #$pr_number"
               else
                 echo "📤 Pushing resolved changes to $head_branch..."
-                git push origin "temp-$head_branch:$head_branch" || {
+                git push origin "$temp_branch:$head_branch" || {
                   echo "❌ ERROR: Failed to push changes for PR #$pr_number"
                   git merge --abort 2>/dev/null || true
                   continue
@@ -103,10 +104,8 @@ jobs:
               # Abort the merge
               git merge --abort
               
-              # Get conflict details
-              echo "📝 Conflict details:"
-              git merge "origin/$base_branch" --no-commit --no-ff 2>&1 | grep -E "CONFLICT|Merge conflict" || echo "Unable to get detailed conflict information"
-              git merge --abort 2>/dev/null || true
+              # Get conflict details (already in failed merge state, just log info)
+              echo "📝 Conflict detected - manual resolution required"
               
               # Add comment to PR about conflicts
               gh pr comment "$pr_number" --body "⚠️ **Merge Conflict Detected**
@@ -126,8 +125,9 @@ jobs:
             fi
             
             # Cleanup
-            git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
-            git branch -D "temp-$head_branch" 2>/dev/null || true
+            default_branch=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@' || echo "main")
+            git checkout "$default_branch" 2>/dev/null || git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
+            git branch -D "$temp_branch" 2>/dev/null || true
             
           done < /tmp/prs.txt
           
