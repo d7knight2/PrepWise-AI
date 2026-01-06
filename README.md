@@ -117,9 +117,35 @@ PrepWise-AI/
 - `npm start` - Start production server
 - `npm run lint` - Run ESLint
 
+## GitHub Workflows
+
+### Automated Merge Conflict Resolution
+
+This repository includes an automated workflow that runs nightly to detect and resolve merge conflicts in open pull requests.
+
+**Features:**
+- 🔄 Automatically merges base branch changes into PRs when possible
+- ⚠️ Notifies PR authors when manual resolution is required
+- 🔒 Safe - only pushes if merge succeeds without conflicts
+- 📊 Detailed logging and error handling
+- 🔁 Retry logic for transient failures
+
+**Schedule:** Runs daily at 2:00 AM UTC
+
+**Manual Trigger:** You can manually trigger the workflow from the Actions tab
+
+**Troubleshooting:** See [Merge Conflict Resolution Guide](.github/workflows/MERGE_CONFLICT_TROUBLESHOOTING.md) for detailed documentation on:
+- How the workflow operates
+- Manual conflict resolution steps
+- Common issues and solutions
+- Testing procedures
+- Timezone information
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+When your PR has merge conflicts, our automated workflow will attempt to resolve them nightly. If automatic resolution isn't possible, you'll receive instructions in your PR.
 
 ## License
 
