@@ -28,12 +28,11 @@ test.describe('Homepage', () => {
     // Wait for page load
     await page.waitForLoadState('networkidle');
     
-    // Check for features section heading
-    const featuresHeading = page.locator('text=Everything you need to succeed');
-    await expect(featuresHeading).toBeVisible();
+    // Check for features section heading using getByText
+    await expect(page.getByText('Everything you need to succeed')).toBeVisible();
     
-    // Check that feature cards are present by looking for the feature heading with specific class
-    await expect(page.locator('.text-lg.leading-6.font-medium.text-gray-900', { hasText: 'Mock Interviews' })).toBeVisible();
-    await expect(page.locator('.text-lg.leading-6.font-medium.text-gray-900', { hasText: 'Progress Tracking' })).toBeVisible();
+    // Check that feature names are present by their text content
+    await expect(page.getByText('Mock Interviews', { exact: true })).toBeVisible();
+    await expect(page.getByText('Progress Tracking', { exact: true })).toBeVisible();
   });
 });
