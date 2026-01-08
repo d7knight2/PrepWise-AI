@@ -116,8 +116,31 @@ PrepWise-AI/
 - `npm run build` - Build for production
 - `npm start` - Start production server
 - `npm run lint` - Run ESLint
+- `npm test` - Run unit tests with Jest
+- `npm run test:watch` - Run unit tests in watch mode
+- `npm run test:coverage` - Run unit tests with coverage report
+- `npm run test:e2e` - Run UI tests with Playwright
+- `npm run test:e2e:headed` - Run UI tests with visible browser
+- `npm run test:e2e:debug` - Debug UI tests interactively
 
 ## GitHub Workflows
+
+### Automated Testing
+
+This repository includes automated test workflows that run on all pull requests to ensure code quality and functionality.
+
+**Unit Tests:**
+- ✅ Runs Jest unit tests for components, pages, and utilities
+- ✅ Generates coverage reports
+- ✅ Must pass before merging PRs
+
+**UI Tests:**
+- ✅ Runs Playwright end-to-end tests
+- ✅ Tests UI functionality in Chromium browser
+- ✅ Generates HTML reports with screenshots and traces
+- ✅ Must pass before merging PRs
+
+**Configuration:** See [Branch Protection Guide](.github/workflows/BRANCH_PROTECTION_GUIDE.md) for instructions on enforcing test requirements.
 
 ### Automated Merge Conflict Resolution
 
