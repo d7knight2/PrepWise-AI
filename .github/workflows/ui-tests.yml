@@ -36,11 +36,15 @@ jobs:
         env:
           # Add any required environment variables for build
           NODE_ENV: production
+          NEXTAUTH_SECRET: test-secret-for-ci-build
+          NEXTAUTH_URL: http://localhost:3000
       
       - name: Run Playwright tests
         run: npm run test:e2e
         env:
           CI: true
+          NEXTAUTH_SECRET: test-secret-for-ci-build
+          NEXTAUTH_URL: http://localhost:3000
       
       - name: Upload Playwright report
         if: always()
