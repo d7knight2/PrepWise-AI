@@ -32,6 +32,8 @@ jobs:
       
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
+        # Note: For faster CI runs, consider using a Docker image with pre-installed browsers
+        # or caching the browser installation. Current installation takes ~30-60 seconds.
       
       - name: Build application
         run: npm run build
